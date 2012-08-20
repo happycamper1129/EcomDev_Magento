@@ -19,10 +19,7 @@
             </secure>
             <unsecure>
                 <base_url>[change me]</base_url>
-            </unsecure>
-            <url>
-                <redirect_to_base>0</redirect_to_base>
-            </url>
+            </unsecure> 
         </web>
     </default>
 </config>
