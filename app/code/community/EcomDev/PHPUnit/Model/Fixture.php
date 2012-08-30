@@ -502,6 +502,18 @@ class EcomDev_PHPUnit_Model_Fixture
         }
 
         Mage::getConfig()->loadDb();
+
+        // Flush website and store configuration caches
+        foreach (Mage::app()->getWebsites(true) as $website) {
+            EcomDev_Utils_Reflection::setRestrictedPropertyValue(
+                $website, '_configCache', array()
+            );
+        }
+        foreach (Mage::app()->getStores(true) as $store) {
+            EcomDev_Utils_Reflection::setRestrictedPropertyValue(
+                $store, '_configCache', array()
+            );
+        }
         return $this;
     }
 
@@ -653,31 +665,7 @@ class EcomDev_PHPUnit_Model_Fixture
      */
     protected function _setConfigNodeValue($path, $value)
     {
-        $pathArray = explode('/', $path);
-
-        $scope = array_shift($pathArray);
-
-        switch ($scope) {
-            case 'stores':
-                $storeCode = array_shift($pathArray);
-                Mage::app()->getStore($storeCode)->setConfig(
-                    implode('/', $pathArray), $value
-                );
-                break;
-
-            case 'websites':
-                $websiteCode = array_shift($pathArray);
-                $website = Mage::app()->getWebsite($websiteCode);
-                EcomDev_Utils_Reflection::setRestrictedPropertyValue(
-                    $website, '_configCache', array()
-                );
-                // Should change value
-
-            default:
-                Mage::getConfig()->setNode($path, $value);
-                break;
-        }
-
+        Mage::getConfig()->setNode($path, $value);
         return $this;
     }
 
@@ -813,27 +801,29 @@ class EcomDev_PHPUnit_Model_Fixture
             return false;
         }
 
-        $scopeModel = Mage::getModel(self::$_scopeModelByType[$type]);
+        $scopeModel = Mage::getModel(self::$_scopeModelByType[$type])->load($row[$type . '_id']);
+        $isNew = !$scopeModel->getId();
+        if ($isNew) {
+            // Change property for saving new objects with specified ids
+            EcomDev_Utils_Reflection::setRestrictedPropertyValues(
+                $scopeModel->getResource(),
+                array(
+                    '_isPkAutoIncrement' => false
+                )
+            );
+            $scopeModel->isObjectNew(true);
+        }
         $scopeModel->setData($row);
-        // Change property for saving new objects with specified ids
-        EcomDev_Utils_Reflection::setRestrictedPropertyValues(
-            $scopeModel->getResource(),
-            array(
-                '_useIsObjectNew' => true,
-                '_isPkAutoIncrement' => false
-            )
-        );
-
-        $scopeModel->isObjectNew(true);
         $scopeModel->save();
-        // Revert changed property
-        EcomDev_Utils_Reflection::setRestrictedPropertyValues(
-            $scopeModel->getResource(),
-            array(
-                '_useIsObjectNew' => false,
-                '_isPkAutoIncrement' => true
-            )
-        );
+        if ($isNew) {
+            // Revert changed property
+            EcomDev_Utils_Reflection::setRestrictedPropertyValues(
+                $scopeModel->getResource(),
+                array(
+                    '_isPkAutoIncrement' => true
+                )
+            );
+        }
 
         return $scopeModel;
     }
@@ -896,4 +886,5 @@ class EcomDev_PHPUnit_Model_Fixture
         Mage::app()->reinitStores();
         return $this;
     }
+
 }
