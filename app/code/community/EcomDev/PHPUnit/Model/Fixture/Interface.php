@@ -25,8 +25,12 @@
  */
 interface EcomDev_PHPUnit_Model_Fixture_Interface extends EcomDev_PHPUnit_Model_Test_Loadable_Interface
 {
+	/** Local scope - used for fixtures that apply only to the current test */
     const SCOPE_LOCAL = 'local';
+	/** Shared scope - used for fixtures that apply to the current test class */
     const SCOPE_SHARED = 'shared';
+	/** Default scope - used for storing data that exists in database before tests are run */
+	const SCOPE_DEFAULT = 'default';
 
     /**
      * Sets fixture options
@@ -84,6 +88,14 @@ interface EcomDev_PHPUnit_Model_Fixture_Interface extends EcomDev_PHPUnit_Model_
      */
     public function setScope($scope);
 
+	/**
+	 * Check that current fixture scope is equal to SCOPE_DEFAULT
+	 *
+	 * @abstract
+	 * @return boolean
+	 */
+	public function isScopeDefault();
+
     /**
      * Check that current fixture scope is equal to SCOPE_SHARED
      *
@@ -105,11 +117,4 @@ interface EcomDev_PHPUnit_Model_Fixture_Interface extends EcomDev_PHPUnit_Model_
      * @return EcomDev_PHPUnit_Model_Fixture_Interface
      */
     public function loadForClass($className);
-
-    /**
-     * Returns VFS wrapper instance
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture_Vfs
-     */
-    public function getVfs();
 }

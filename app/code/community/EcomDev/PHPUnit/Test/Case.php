@@ -28,14 +28,8 @@ require_once 'Spyc/spyc.php';
 abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
 {
 
-    /**
-     * @deprecated since 0.3.0
-     **/
-    const XML_PATH_DEFAULT_FIXTURE_MODEL = EcomDev_PHPUnit_Test_Case_Util::XML_PATH_DEFAULT_FIXTURE_MODEL;
-    /**
-     * @deprecated since 0.3.0
-     **/
-    const XML_PATH_DEFAULT_EXPECTATION_MODEL = EcomDev_PHPUnit_Test_Case_Util::XML_PATH_DEFAULT_EXPECTATION_MODEL;
+    const XML_PATH_DEFAULT_FIXTURE_MODEL = 'phpunit/suite/fixture/model';
+    const XML_PATH_DEFAULT_EXPECTATION_MODEL = 'phpunit/suite/expectation/model';
 
 
     /**
@@ -69,7 +63,7 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      */
     public static function app()
     {
-        return EcomDev_PHPUnit_Test_Case_Util::app();
+        return Mage::app();
     }
 
     /**
@@ -258,11 +252,10 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      *
      * @return string
      * @throws RuntimeException if module name was not found for the passed class name
-     * @deprecated since 0.3.0
      */
     public function getModuleName()
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getModuleName($this);
+        return $this->app()->getModuleNameByClassName($this);
     }
 
     /**
@@ -273,7 +266,14 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      */
     protected static function getModuleNameFromCallStack()
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getModuleNameFromCallStack();
+        $backTrace = debug_backtrace(true);
+        foreach ($backTrace as $call) {
+            if (isset($call['object']) && $call['object'] instanceof EcomDev_PHPUnit_Test_Case) {
+                return $call['object']->getModuleName();
+            }
+        }
+
+        throw new RuntimeException('Unable to retrieve module name from call stack, because assertion is not called from EcomDev_PHPUnit_Test_Case based class method');
     }
 
 
@@ -284,11 +284,10 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      * @param string $name
      * @param array|string $sources
      * @return array
-     * @deprecated since 0.3.0
      */
     public function getAnnotationByName($name, $sources = 'method')
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getAnnotationByNameFromClass(get_class($this), $name, $sources, $this->getName(false));
+        return self::getAnnotationByNameFromClass(get_class($this), $name, $sources, $this->getName(false));
     }
 
     /**
@@ -298,12 +297,30 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      * @param string $name annotation name
      * @param array|string $sources
      * @param string $testName test method name
-     * @return array
-     * @deprecated since 0.3.0
      */
     public static function getAnnotationByNameFromClass($className, $name, $sources = 'class', $testName = '')
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getAnnotationByNameFromClass($className, $name, $sources, $testName);
+        if (is_string($sources)) {
+            $sources = array($sources);
+        }
+
+        $allAnnotations =  PHPUnit_Util_Test::parseTestMethodAnnotations(
+          $className, $testName
+        );
+
+        $annotation = array();
+
+        // Walkthrough sources for annotation retrieval
+        foreach ($sources as $source) {
+            if (isset($allAnnotations[$source][$name])) {
+                $annotation = array_merge(
+                    $allAnnotations[$source][$name],
+                    $annotation
+                );
+            }
+        }
+
+        return $annotation;
     }
 
     /**
@@ -643,7 +660,28 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      */
     protected static function getFixture()
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getFixture(get_called_class());
+        $fixture = Mage::getSingleton(
+            self::getLoadableClassAlias(
+                'fixture',
+                self::XML_PATH_DEFAULT_FIXTURE_MODEL
+            )
+        );
+
+        if (!$fixture instanceof EcomDev_PHPUnit_Model_Fixture_Interface) {
+            throw new RuntimeException('Fixture model should implement EcomDev_PHPUnit_Model_Fixture_Interface interface');
+        }
+
+        $storage = Mage::registry(EcomDev_PHPUnit_Model_App::REGISTRY_PATH_SHARED_STORAGE);
+
+        if (!$storage instanceof Varien_Object) {
+            throw new RuntimeException('Fixture storage object was not initialized during test application setup');
+        }
+
+        $fixture->setStorage(
+            Mage::registry(EcomDev_PHPUnit_Model_App::REGISTRY_PATH_SHARED_STORAGE)
+        );
+
+        return $fixture;
     }
 
     /**
@@ -653,7 +691,12 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      */
     protected function getExpectation()
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getExpectation(get_class($this));
+        return Mage::getSingleton(
+            self::getLoadableClassAlias(
+                'expectation',
+                self::XML_PATH_DEFAULT_EXPECTATION_MODEL
+            )
+        );
     }
 
 
@@ -664,11 +707,21 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      * @param string $type
      * @param string $configPath
      * @return string
-     * @deprecated since 0.3.0
      */
     protected static function getLoadableClassAlias($type, $configPath)
     {
-        return EcomDev_PHPUnit_Test_Case::getLoadableClassAlias(get_called_class(), $type, $configPath);
+        $annotationValue = self::getAnnotationByNameFromClass(
+            get_called_class(),
+            $type .'Model'
+        );
+
+        if (current($annotationValue)) {
+            $classAlias = current($annotationValue);
+        } else {
+            $classAlias = (string) self::app()->getConfig()->getNode($configPath);
+        }
+
+        return $classAlias;
     }
 
     /**
@@ -701,7 +754,7 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
             $name = $this->getName(false);
         }
 
-        return EcomDev_PHPUnit_Test_Case_Util::getYamlFilePath(get_called_class(), $type, $name);
+        return self::getYamlFilePathByClass(get_called_class(), $type, $name);
     }
 
     /**
@@ -713,11 +766,39 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      * @param string $type type of YAML data (fixtures,expectations,dataproviders)
      * @param string $name the file name for loading
      * @return string|boolean
-     * @depracated since 0.3.0
      */
     public static function getYamlFilePathByClass($className, $type, $name)
     {
-        return EcomDev_PHPUnit_Test_Case_Util::getYamlFilePath($className, $type, $name);
+        if (strrpos($name, '.yaml') !== strlen($name) - 5) {
+            $name .= '.yaml';
+        }
+
+        $classFileObject = new SplFileInfo(
+            EcomDev_Utils_Reflection::getRelflection($className)->getFileName()
+        );
+
+        // When prefixed with ~/ or ~My_Module/, load from the module's Test/<type> directory
+        if (preg_match('#^~(?<module>[^/]*)/(?<path>.*)$#', $name, $matches)) {
+            $name = $matches['path'];
+            if( ! empty($matches['module'])) {
+              $moduleName = $matches['module'];
+            } else {
+              $moduleName = substr($className, 0, strpos($className, '_Test_'));;
+            }
+            $filePath = Mage::getModuleDir('', $moduleName) . DS . 'Test' . DS;
+        }
+        // Otherwise load from the Class/<type> directory
+        else {
+            $filePath = $classFileObject->getPath() . DS
+                      . $classFileObject->getBasename('.php') . DS;
+        }
+        $filePath .= $type . DS . $name;
+
+        if (file_exists($filePath)) {
+            return $filePath;
+        }
+
+        return false;
     }
 
     /**
@@ -728,8 +809,36 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
      */
     protected function setUp()
     {
+        self::getFixture()
+            ->setScope(EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_LOCAL)
+            ->loadByTestCase($this);
+        $annotations = $this->getAnnotations();
+        self::getFixture()
+            ->setOptions($annotations['method'])
+            ->apply();
         $this->app()->resetDispatchedEvents();
         parent::setUp();
+    }
+
+    /**
+     * Initializes test environment for subset of tests
+     *
+     */
+    public static function setUpBeforeClass()
+    {
+        self::getFixture()
+            ->setScope(EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_SHARED)
+            ->loadForClass(get_called_class());
+
+        $annotations = PHPUnit_Util_Test::parseTestMethodAnnotations(
+            get_called_class()
+        );
+
+        self::getFixture()
+            ->setOptions($annotations['class'])
+            ->apply();
+
+        parent::setUpBeforeClass();
     }
 
     /**
@@ -782,13 +891,35 @@ abstract class EcomDev_PHPUnit_Test_Case extends PHPUnit_Framework_TestCase
             $this->_originalStore = null;
         }
 
+        if ($this->getExpectation()->isLoaded()) {
+            $this->getExpectation()->discard();
+        }
+
         $this->app()->getConfig()->flushReplaceInstanceCreation();
         $this->app()->getLayout()->flushReplaceBlockCreation();
 
         foreach ($this->_replacedRegistry as $registryPath => $originalValue) {
             $this->app()->replaceRegistry($registryPath, $originalValue);
+        }
 
+        self::getFixture()
+            ->setScope(EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_LOCAL)
+            ->discard(); // Clear applied fixture
         parent::tearDown();
+    }
+
+    /**
+     * Clean up all the shared fixture data
+     *
+     * @return void
+     */
+    public static function tearDownAfterClass()
+    {
+        self::getFixture()
+            ->setScope(EcomDev_PHPUnit_Model_Fixture_Interface::SCOPE_SHARED)
+            ->discard();
+
+        parent::tearDownAfterClass();
     }
 
 }
