@@ -16,25 +16,16 @@
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  */
 
-/**
- * Front controller for test suite
- *
- */
-class EcomDev_PHPUnit_Controller_Front extends Mage_Core_Controller_Varien_Front
+interface EcomDev_PHPUnit_Model_Yaml_Loader_Interface
 {
     /**
-     * Overriden for getting rid
-     * of initialization of routers for each test case
+     * Resolves YAML file path based on its filename,
+     * if file is not found, it should return false
      *
-     * (non-PHPdoc)
-     * @see Mage_Core_Controller_Varien_Front::init()
+     * @param string $fileName name of the file
+     * @param string $relatedClassName class name from which load of yaml file is invoked
+     * @param string $type type of Yaml file (provider, fixture, expectation)
+     * @return string|bool
      */
-    public function init()
-    {
-        if (!$this->_routers) {
-            parent::init();
-        }
-
-        return $this;
-    }
+    public function resolveFilePath($fileName, $relatedClassName, $type);
 }

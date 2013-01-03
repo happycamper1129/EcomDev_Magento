@@ -16,25 +16,20 @@
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  */
 
-/**
- * Front controller for test suite
- *
- */
-class EcomDev_PHPUnit_Controller_Front extends Mage_Core_Controller_Varien_Front
+class EcomDev_PHPUnit_Model_Yaml_Loader_Default extends EcomDev_PHPUnit_Model_Yaml_Loader_Abstract
 {
     /**
-     * Overriden for getting rid
-     * of initialization of routers for each test case
+     * Returns processed file path
      *
-     * (non-PHPdoc)
-     * @see Mage_Core_Controller_Varien_Front::init()
+     * @param string $fileName
+     * @param string $relatedClassName
+     * @param string $type
+     * @return string|bool
      */
-    public function init()
+    protected function _getFilePath($fileName, $relatedClassName, $type)
     {
-        if (!$this->_routers) {
-            parent::init();
-        }
-
-        return $this;
+        $reflection = EcomDev_Utils_Reflection::getReflection($relatedClassName);
+        $fileObject = new SplFileInfo($reflection->getFileName());
+        return $fileObject->getPath() . DS . $fileObject->getBasename('.php') . DS . $type . DS . $fileName;
     }
 }

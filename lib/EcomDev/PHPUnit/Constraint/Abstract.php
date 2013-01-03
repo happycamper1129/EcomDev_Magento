@@ -83,7 +83,7 @@ abstract class EcomDev_PHPUnit_Constraint_Abstract
      */
     public function __construct($type, $expectedValue = null)
     {
-        $reflection = EcomDev_Utils_Reflection::getRelflection(get_class($this));
+        $reflection = EcomDev_Utils_Reflection::getReflection(get_class($this));
         $types = array();
         foreach ($reflection->getConstants() as $name => $constant) {
             if (strpos($name, 'TYPE_') === 0) {
@@ -181,9 +181,9 @@ abstract class EcomDev_PHPUnit_Constraint_Abstract
      * (non-PHPdoc)
      * @see PHPUnit_Framework_Constraint::fail()
      */
-    public function fail($other, $description, $not = FALSE)
+    public function fail($other, $description, PHPUnit_Framework_ComparisonFailure $comparisonFailure = NULL)
     {
-        $failureDescription = $this->failureDescription($other, $description, $not);
+        $failureDescription = sprintf('Failed asserting that %s', $this->failureDescription($other));
 
         if (in_array($this->_type, $this->_typesWithDiff)) {
             throw new EcomDev_PHPUnit_Constraint_Exception(
@@ -211,13 +211,13 @@ abstract class EcomDev_PHPUnit_Constraint_Abstract
      * @param boolean $not
      * @return string
      */
-    protected function failureDescription($other, $description, $not)
+    protected function failureDescription($other)
     {
         if (method_exists($this, 'customFailureDescription')) {
-            return $this->customFailureDescription($other, $description, $not);
+            return $this->customFailureDescription($other);
         }
 
-        return parent::failureDescription($other, $description, $not);
+        return parent::failureDescription($other);
     }
 
     /**
