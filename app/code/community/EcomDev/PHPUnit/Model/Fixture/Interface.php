@@ -41,13 +41,6 @@ interface EcomDev_PHPUnit_Model_Fixture_Interface extends EcomDev_PHPUnit_Model_
     public function setOptions(array $options);
 
     /**
-     * Sets fixture options
-     *
-     * @return array
-     */
-    public function getOptions();
-
-    /**
      * Sets storage for fixtures
      *
      * @param Varien_Object $storage
@@ -124,21 +117,4 @@ interface EcomDev_PHPUnit_Model_Fixture_Interface extends EcomDev_PHPUnit_Model_
      * @return EcomDev_PHPUnit_Model_Fixture_Interface
      */
     public function loadForClass($className);
-
-    /**
-     * Sets fixture value
-     *
-     * @param string $key
-     * @param array[] $value
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture_Interface
-     */
-    public function setFixtureValue($key, $value);
-
-    /**
-     * Returns VFS wrapper instance
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture_Vfs
-     */
-    public function getVfs();
 }

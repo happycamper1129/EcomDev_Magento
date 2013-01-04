@@ -16,6 +16,9 @@
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  */
 
+// Loading Spyc yaml parser,
+// because Symfony component is not working properly with nested structures
+require_once 'Spyc/spyc.php';
 
 /**
  * Fixture model for Magento unit tests
@@ -24,48 +27,44 @@
  *
  */
 class EcomDev_PHPUnit_Model_Fixture
-    extends Varien_Object
+    extends Mage_Core_Model_Abstract
     implements EcomDev_PHPUnit_Model_Fixture_Interface
 {
     // Configuration path for eav loaders
-    /* @deprecated since 0.3.0 */
-    const XML_PATH_FIXTURE_EAV_LOADERS = EcomDev_PHPUnit_Model_Fixture_Processor_Eav::XML_PATH_FIXTURE_EAV_LOADERS;
-
-    // Processors configuration path
-    const XML_PATH_FIXTURE_PROCESSORS = 'phpunit/suite/fixture/processors';
+    const XML_PATH_FIXTURE_EAV_LOADERS = 'phpunit/suite/fixture/eav';
 
 	// Configuration path for attribute loaders
     const XML_PATH_FIXTURE_ATTRIBUTE_LOADERS = 'phpunit/suite/fixture/attribute';
 
     // Default eav loader class node in loaders configuration
-    /* @deprecated since 0.3.0 */
-    const DEFAULT_EAV_LOADER_NODE = EcomDev_PHPUnit_Model_Fixture_Processor_Eav::DEFAULT_EAV_LOADER_NODE;
+    const DEFAULT_EAV_LOADER_NODE = 'default';
 
     // Default shared fixture name
     const DEFAULT_SHARED_FIXTURE_NAME = 'default';
 
     // Default eav loader class alias
-    /* @deprecated since 0.3.0 */
-    const DEFAULT_EAV_LOADER_CLASS = EcomDev_PHPUnit_Model_Fixture_Processor_Eav::DEFAULT_EAV_LOADER_CLASS;
+    const DEFAULT_EAV_LOADER_CLASS = 'ecomdev_phpunit/fixture_eav_default';
+
+    // Default attribute loader class alias
+    const DEFAULT_ATTRIBUTE_LOADER_CLASS = 'ecomdev_phpunit/fixture_attribute_default';
 
     // Key for storing fixture data into storage
     const STORAGE_KEY_FIXTURE = 'fixture';
 
     // Key for loaded tables into database
-    /* @deprecated since 0.3.0 */
-    const STORAGE_KEY_TABLES = EcomDev_PHPUnit_Model_Fixture_Processor_Tables::STORAGE_KEY;
+    const STORAGE_KEY_TABLES = 'tables';
 
     // Key for loaded entities by EAV loaders
-    /* @deprecated since 0.3.0 */
-    const STORAGE_KEY_ENTITIES = EcomDev_PHPUnit_Model_Fixture_Processor_Eav::STORAGE_KEY;
+    const STORAGE_KEY_ENTITIES = 'entities';
+
+    // Key for loaded attributes by attribute loaders
+    const STORAGE_KEY_ATTRIBUTES = 'attributes';
 
     // Key for loaded cache options
-    /* @deprecated since 0.3.0 */
-    const STORAGE_KEY_CACHE_OPTIONS = EcomDev_PHPUnit_Model_Fixture_Processor_Cache::STORAGE_KEY;
+    const STORAGE_KEY_CACHE_OPTIONS = 'cache_options';
 
     // Key for created scope models
-    /* @deprecated since 0.3.0 */
-    const STORAGE_KEY_SCOPE = EcomDev_PHPUnit_Model_Fixture_Processor_Scope::STORAGE_KEY;
+    const STORAGE_KEY_SCOPE = 'scope';
 
     /**
      * Fixtures array, contains config,
@@ -121,19 +120,15 @@ class EcomDev_PHPUnit_Model_Fixture
     protected $_options = array();
 
     /**
-     * Processors list
-     *
-     * @var EcomDev_PHPUnit_Model_Fixture_Processor_Interface[]
-     */
-    protected $_processors = array();
-
-    /**
      * List of scope model aliases by scope type
      *
      * @var array
-     * @deprecated since 0.3.0
      */
-    protected static $_scopeModelByType = array();
+    protected static $_scopeModelByType = array(
+        'store' => 'core/store',
+        'group' => 'core/store_group',
+        'website' => 'core/website'
+    );
 
     /**
      * Associative array of configuration nodes xml that was changed by fixture,
@@ -160,8 +155,7 @@ class EcomDev_PHPUnit_Model_Fixture
      */
     protected function _construct()
     {
-        // Additional property for test data fixture
-        $this->setTestData(new Varien_Object());
+        $this->_init('ecomdev_phpunit/fixture');
     }
 
     /**
@@ -174,16 +168,6 @@ class EcomDev_PHPUnit_Model_Fixture
     {
         $this->_options = $options;
         return $this;
-    }
-
-    /**
-     * Retrieve fixture options
-     *
-     * @return array
-     */
-    public function getOptions()
-    {
-        return $this->_options;
     }
 
     /**
@@ -292,28 +276,35 @@ class EcomDev_PHPUnit_Model_Fixture
     }
 
     /**
-     * Check that current fixture scope is equal to SCOPE_DEFAULT
-     *
-     * @return boolean
-     */
-    public function isScopeDefault()
-    {
-        return $this->getScope() === self::SCOPE_DEFAULT;
-    }
+	 * Check that current fixture scope is equal to SCOPE_DEFAULT
+	 *
+	 * @return boolean
+	 */
+	public function isScopeDefault()
+	{
+		return $this->getScope() === self::SCOPE_DEFAULT;
+	}
 
     /**
      * Loads fixture files from test case annotations
      *
-     * @param PHPUnit_Framework_TestCase $testCase
-     * @return PHPUnit_Framework_TestCase
+     * @param EcomDev_PHPUnit_Test_Case $testCase
+     * @return EcomDev_PHPUnit_Model_Fixture
      */
-    public function loadByTestCase(PHPUnit_Framework_TestCase $testCase)
+    public function loadByTestCase(EcomDev_PHPUnit_Test_Case $testCase)
     {
-        $fixtures = EcomDev_PHPUnit_Test_Case_Util::getAnnotationByNameFromClass(
-            get_class($testCase), 'loadFixture', array('class', 'method'), $testCase->getName(false)
+        $fixtures = $testCase->getAnnotationByName(
+            'loadFixture',
+            array('class', 'method')
         );
 
+
+        $cacheOptions = $testCase->getAnnotationByName('cache', 'method');
+
+        $this->_parseCacheOptions($cacheOptions);
+
         $this->_loadFixtureFiles($fixtures, $testCase);
+
         return $this;
     }
 
@@ -325,9 +316,23 @@ class EcomDev_PHPUnit_Model_Fixture
      */
     public function loadForClass($className)
     {
-        $fixtures = EcomDev_PHPUnit_Test_Case_Util::getAnnotationByNameFromClass(
-            $className, 'loadSharedFixture', 'class'
+        $reflection = EcomDev_Utils_Reflection::getRelflection($className);
+
+        $method = $reflection->getMethod('getAnnotationByNameFromClass');
+
+        if (!$method instanceof ReflectionMethod) {
+            throw new RuntimeException('Unable to read class annotations, because it is not extended from EcomDev_PHPUnit_Test_Case');
+        }
+
+        $fixtures = $method->invokeArgs(
+            null, array($className, 'loadSharedFixture', 'class')
         );
+
+        $cacheOptions = $method->invokeArgs(
+            null, array($className, 'cache', 'class')
+        );
+
+        $this->_parseCacheOptions($cacheOptions);
 
         $this->_loadFixtureFiles($fixtures, $className);
         return $this;
@@ -338,49 +343,56 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $annotations
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _parseCacheOptions($annotations)
     {
-        return $this;
-    }
+        $cacheOptions = array();
+        foreach ($annotations as $annotation) {
+            list($action, $cacheType) = preg_split('/\s+/', trim($annotation));
+            $flag = ($action === 'off' ? 0 : 1);
+            if ($cacheType === 'all') {
+                foreach (Mage::app()->getCacheInstance()->getTypes() as $type) {
+                    $cacheOptions[$type->getId()] = $flag;
+                }
+            } else {
+                $cacheOptions[$cacheType] = $flag;
+            }
 
-    /**
-     * Sets fixture value
-     *
-     * @param string $key
-     * @param array[] $value
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture
-     */
-    public function setFixtureValue($key, $value)
-    {
-        $this->_fixture[$key] = $value;
-        return $this;
+        }
+
+        if ($cacheOptions) {
+            $this->_fixture['cache_options'] = $cacheOptions;
+        }
     }
 
     /**
      * Loads fixture files
      *
-     * @param array                            $fixtures
+     * @param array $fixtures
      * @param string|EcomDev_PHPUnit_Test_Case $classOrInstance
-     *
-     * @throws RuntimeException
      * @return EcomDev_PHPUnit_Model_Fixture
      */
     protected function _loadFixtureFiles(array $fixtures, $classOrInstance)
     {
-        $isShared = ($this->isScopeShared() || !$classOrInstance instanceof PHPUnit_Framework_TestCase);
+        $isShared = ($this->isScopeShared() || !$classOrInstance instanceof EcomDev_PHPUnit_Test_Case);
         foreach ($fixtures as $fixture) {
             if (empty($fixture) && $isShared) {
                 $fixture = self::DEFAULT_SHARED_FIXTURE_NAME;
             } elseif (empty($fixture)) {
-                $fixture = $classOrInstance->getName(false);
+                $fixture = null;
             }
 
-            $className = (is_string($classOrInstance) ? $classOrInstance : get_class($classOrInstance));
-            $filePath = EcomDev_PHPUnit_Test_Case_Util::getYamlLoader()
-                ->resolveFilePath($className, EcomDev_PHPUnit_Model_Yaml_Loader::TYPE_FIXTURE, $fixture);
+            $filePath = false;
+
+            if ($isShared) {
+                $reflection = EcomDev_Utils_Reflection::getRelflection($classOrInstance);
+                $method = $reflection->getMethod('getYamlFilePathByClass');
+                if ($method instanceof ReflectionMethod) {
+                    $filePath = $method->invokeArgs(null, array($classOrInstance, 'fixtures', $fixture));
+                }
+            } else {
+                $filePath = $classOrInstance->getYamlFilePath('fixtures', $fixture);
+            }
 
             if (!$filePath) {
                 throw new RuntimeException('Unable to load fixture for test');
@@ -401,7 +413,7 @@ class EcomDev_PHPUnit_Model_Fixture
      */
     public function loadYaml($filePath)
     {
-        $data = EcomDev_PHPUnit_Test_Case_Util::getYamlLoader()->load($filePath);
+        $data = Spyc::YAMLLoad($filePath);
 
         if (empty($this->_fixture)) {
             $this->_fixture = $data;
@@ -413,43 +425,19 @@ class EcomDev_PHPUnit_Model_Fixture
     }
 
     /**
-     * Returns list of available processors for fixture
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture_Processor_Interface[]
-     */
-    public function getProcessors()
-    {
-        if (empty($this->_processors)) {
-            $processorsNode = Mage::getConfig()->getNode(self::XML_PATH_FIXTURE_PROCESSORS);
-            foreach ($processorsNode->children() as $code => $processorAlias) {
-                $processor = Mage::getSingleton((string)$processorAlias);
-                if ($processor instanceof EcomDev_PHPUnit_Model_Fixture_Processor_Interface) {
-                    $this->_processors[$code] = $processor;
-                }
-            }
-        }
-
-        return $this->_processors;
-    }
-
-    /**
      * Applies loaded fixture
      *
      * @return EcomDev_PHPUnit_Model_Fixture
      */
     public function apply()
     {
-        $processors = $this->getProcessors();
-        // Initialize fixture processors
-        foreach ($processors as $processor) {
-            $processor->initialize($this);
-        }
-
         $this->setStorageData(self::STORAGE_KEY_FIXTURE, $this->_fixture);
+        $reflection = EcomDev_Utils_Reflection::getRelflection($this);
 
         foreach ($this->_fixture as $part => $data) {
-            if (isset($processors[$part])) {
-                $processors[$part]->apply($data, $part, $this);
+            $method = '_apply' . uc_words($part, '', '_');
+            if ($reflection->hasMethod($method)) {
+                $this->$method($data);
             }
         }
 
@@ -473,11 +461,11 @@ class EcomDev_PHPUnit_Model_Fixture
 
         $this->_fixture = $fixture;
         $this->setStorageData(self::STORAGE_KEY_FIXTURE, null);
-
-        $processors = $this->getProcessors();
+        $reflection = EcomDev_Utils_Reflection::getRelflection($this);
         foreach ($this->_fixture as $part => $data) {
-            if (isset($processors[$part])) {
-                $processors[$part]->discard($data, $part, $this);
+            $method = '_discard' . uc_words($part, '', '_');
+            if ($reflection->hasMethod($method)) {
+                $this->$method($data);
             }
         }
 
@@ -489,10 +477,15 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $options
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _applyCacheOptions($options)
     {
+        $originalOptions = Mage::app()->getCacheOptions();
+        $this->setStorageData(self::STORAGE_KEY_CACHE_OPTIONS, $originalOptions);
+
+        $options += $originalOptions;
+        Mage::app()->setCacheOptions($options);
+
         return $this;
     }
 
@@ -500,10 +493,12 @@ class EcomDev_PHPUnit_Model_Fixture
      * Discards changes that were made to Magento cache
      *
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardCacheOptions()
     {
+        Mage::app()->setCacheOptions(
+            $this->getStorageData(self::STORAGE_KEY_CACHE_OPTIONS)
+        );
         return $this;
     }
 
@@ -512,11 +507,33 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $configuration
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      * @throws InvalidArgumentException in case if wrong configuration array supplied
      */
     protected function _applyConfig($configuration)
     {
+        if (!is_array($configuration)) {
+            throw new InvalidArgumentException('Configuration part should be an associative list');
+        }
+
+        Mage::getConfig()->loadScopeSnapshot();
+
+        foreach ($configuration as $path => $value) {
+            $this->_setConfigNodeValue($path, $value);
+        }
+
+        Mage::getConfig()->loadDb();
+
+        // Flush website and store configuration caches
+        foreach (Mage::app()->getWebsites(true) as $website) {
+            EcomDev_Utils_Reflection::setRestrictedPropertyValue(
+                $website, '_configCache', array()
+            );
+        }
+        foreach (Mage::app()->getStores(true) as $store) {
+            EcomDev_Utils_Reflection::setRestrictedPropertyValue(
+                $store, '_configCache', array()
+            );
+        }
         return $this;
     }
 
@@ -525,11 +542,33 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $configuration
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      * @throws InvalidArgumentException in case of wrong configuration data passed
      */
     protected function _applyConfigXml($configuration)
     {
+        if (!is_array($configuration)) {
+            throw new InvalidArgumentException('Configuration part should be an associative list');
+        }
+
+        foreach ($configuration as $path => $value) {
+            if (!is_string($value)) {
+                throw new InvalidArgumentException('Configuration value should be a valid xml string');
+            }
+            try {
+                $xmlElement = new Varien_Simplexml_Element($value);
+            } catch (Exception $e) {
+                throw new InvalidArgumentException('Configuration value should be a valid xml string', 0, $e);
+            }
+
+            $node = Mage::getConfig()->getNode($path);
+
+            if (!$node) {
+                throw new InvalidArgumentException('Configuration value should be a valid xml string');
+            }
+
+            $node->extend($xmlElement, true);
+        }
+
         return $this;
     }
 
@@ -537,10 +576,11 @@ class EcomDev_PHPUnit_Model_Fixture
      * Restores config to a previous configuration scope
      *
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _restoreConfig()
     {
+        Mage::getConfig()->loadScopeSnapshot();
+        Mage::getConfig()->loadDb();
         return $this;
     }
 
@@ -548,10 +588,10 @@ class EcomDev_PHPUnit_Model_Fixture
      * Reverts fixture configuration values in Mage_Core_Model_Config
      *
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardConfig()
     {
+        $this->_restoreConfig();
         return $this;
     }
 
@@ -559,10 +599,12 @@ class EcomDev_PHPUnit_Model_Fixture
      * Reverts fixture configuration xml values in Mage_Core_Model_Config
      *
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardConfigXml()
     {
+        if (!isset($this->_fixture['config'])) {
+            $this->_resetConfig();
+        }
         return $this;
     }
 
@@ -571,11 +613,34 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $tables
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _applyTables($tables)
     {
-        return $this;
+        if (!is_array($tables)) {
+            throw new InvalidArgumentException(
+                'Tables part should be an associative list with keys as table entity and values as list of associative rows'
+            );
+        }
+
+        $ignoreCleanUp = array();
+
+        // Ignore cleaning of tables if shared fixture loaded something
+        if ($this->isScopeLocal() && $this->getStorageData(self::STORAGE_KEY_TABLES, self::SCOPE_SHARED)) {
+            $ignoreCleanUp = array_keys($this->getStorageData(self::STORAGE_KEY_TABLES, self::SCOPE_SHARED));
+        }
+
+        $this->getResource()->beginTransaction();
+        foreach ($tables as $tableEntity => $data) {
+            if (!in_array($tableEntity, $ignoreCleanUp)) {
+                $this->getResource()->cleanTable($tableEntity);
+            }
+
+            if (!empty($data)) {
+                $this->getResource()->loadTableData($tableEntity, $data);
+            }
+        }
+        $this->getResource()->commit();
+        $this->setStorageData(self::STORAGE_KEY_TABLES, $tables);
     }
 
     /**
@@ -583,11 +648,33 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $tables
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardTables($tables)
     {
-        return $this;
+        if (!is_array($tables)) {
+            throw new InvalidArgumentException(
+                'Tables part should be an associative list with keys as table entity and values as list of associative rows'
+            );
+        }
+
+        $restoreTableData = array();
+
+        // Data for tables used in shared fixture
+        if ($this->isScopeLocal() && $this->getStorageData(self::STORAGE_KEY_TABLES, self::SCOPE_SHARED)) {
+            $restoreTableData = $this->getStorageData(self::STORAGE_KEY_TABLES, self::SCOPE_SHARED);
+        }
+        $this->getResource()->beginTransaction();
+
+        foreach (array_keys($tables) as $tableEntity) {
+            $this->getResource()->cleanTable($tableEntity);
+
+            if (isset($restoreTableData[$tableEntity])) {
+                 $this->getResource()->loadTableData($tableEntity, $restoreTableData[$tableEntity]);
+            }
+        }
+
+        $this->getResource()->commit();
+        $this->setStorageData(self::STORAGE_KEY_TABLES, null);
     }
 
     /**
@@ -596,10 +683,27 @@ class EcomDev_PHPUnit_Model_Fixture
      * @param string $path
      * @param string $value
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _setConfigNodeValue($path, $value)
     {
+        $originalNode = Mage::getConfig()->getNode($path);
+
+        // Support for custom backend values
+        if (!empty($value) && $originalNode !== false && $originalNode->getAttribute('backend_model')) {
+            $backend = Mage::getModel((string) $originalNode->getAttribute('backend_model'));
+            $dataPath = explode('/', $path);
+            if (current($dataPath) === 'default') {
+                array_shift($dataPath);
+            } elseif (current($dataPath) === 'websites' || current($dataPath) === 'stores') {
+                $dataPath = array_splice($dataPath, 0, 2);
+            }
+
+            $backend->setPath(implode('/', $dataPath))->setValue($value);
+            EcomDev_Utils_Reflection::invokeRestrictedMethod($backend, '_beforeSave');
+            $value = $backend->getValue();
+        }
+
+        Mage::getConfig()->setNode($path, $value);
         return $this;
     }
 
@@ -608,7 +712,6 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param string $entityType
      * @return EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
-     * @deprecated since 0.3.0
      */
     protected function _getEavLoader($entityType)
     {
@@ -649,10 +752,26 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $entities
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _applyEav($entities)
     {
+        if (!is_array($entities)) {
+            throw new InvalidArgumentException('EAV part should be an associative list with rows as value and entity type as key');
+        }
+
+        $this->getResource()->beginTransaction();
+
+        foreach ($entities as $entityType => $values) {
+            $this->_getEavLoader($entityType)
+                ->setFixture($this)
+                ->setOptions($this->_options)
+                ->loadEntity($entityType, $values);
+        }
+
+        $this->getResource()->commit();
+
+        $this->setStorageData(self::STORAGE_KEY_ENTITIES, array_keys($entities));
+
         return $this;
     }
 
@@ -661,10 +780,27 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $entities
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardEav($entities)
     {
+        $ignoreCleanUp = array();
+
+        // Ignore cleaning of entities if shared fixture loaded something for them
+        if ($this->isScopeLocal() && $this->getStorageData(self::STORAGE_KEY_ENTITIES, self::SCOPE_SHARED)) {
+            $ignoreCleanUp = $this->getStorageData(self::STORAGE_KEY_ENTITIES, self::SCOPE_SHARED);
+        }
+
+        $this->getResource()->beginTransaction();
+        foreach (array_keys($entities) as $entityType) {
+            if (in_array($entityType, $ignoreCleanUp)) {
+                continue;
+            }
+            $this->_getEavLoader($entityType)
+                ->cleanEntity($entityType);
+        }
+
+        $this->getResource()->commit();
+
         return $this;
     }
 
@@ -674,10 +810,32 @@ class EcomDev_PHPUnit_Model_Fixture
      *
      * @param array $types
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _applyScope($types)
     {
+        Mage::app()->disableEvents();
+        // Validate received fixture data
+        $this->_validateScope($types);
+
+        if ($this->getStorageData(self::STORAGE_KEY_SCOPE) !== null) {
+            throw new RuntimeException('Scope data was not cleared after previous test');
+        }
+
+        $scopeModels = array();
+
+        foreach ($types as $type => $rows) {
+            foreach ($rows as $row) {
+                $model = $this->_handleScopeRow($type, $row);
+                if ($model) {
+                    $scopeModels[$type][$model->getId()] = $model;
+                }
+            }
+        }
+
+        $this->setStorageData(self::STORAGE_KEY_SCOPE, $scopeModels);
+
+        Mage::app()->enableEvents();
+        Mage::app()->reinitStores();
         return $this;
     }
 
@@ -687,22 +845,66 @@ class EcomDev_PHPUnit_Model_Fixture
      * @param string $type
      * @param array $row
      * @return boolean|Mage_Core_Model_Abstract
-     * @deprecated since 0.3.0
      */
     protected function _handleScopeRow($type, $row)
     {
-        return false;
-   }
+        $previousScope = array();
+
+        if ($this->isScopeLocal() && $this->getStorageData(self::STORAGE_KEY_SCOPE, self::SCOPE_SHARED) !== null) {
+            $previousScope = $this->getStorageData(self::STORAGE_KEY_SCOPE, self::SCOPE_SHARED);
+        }
+
+        if (isset($previousScope[$type][$row[$type . '_id']])) {
+            return false;
+        }
+
+        $scopeModel = Mage::getModel(self::$_scopeModelByType[$type])->load($row[$type . '_id']);
+        $isNew = !$scopeModel->getId();
+        if ($isNew) {
+            // Change property for saving new objects with specified ids
+            EcomDev_Utils_Reflection::setRestrictedPropertyValues(
+                $scopeModel->getResource(),
+                array(
+                    '_isPkAutoIncrement' => false
+                )
+            );
+            $scopeModel->isObjectNew(true);
+        }
+        $scopeModel->setData($row);
+        $scopeModel->save();
+        if ($isNew) {
+            // Revert changed property
+            EcomDev_Utils_Reflection::setRestrictedPropertyValues(
+                $scopeModel->getResource(),
+                array(
+                    '_isPkAutoIncrement' => true
+                )
+            );
+        }
+
+        return $scopeModel;
+    }
 
     /**
      * Validate scope data
      *
      * @param array $types
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _validateScope($types)
     {
+        foreach ($types as $type => $rows) {
+            if (!isset(self::$_scopeModelByType[$type])) {
+                throw new RuntimeException(sprintf('Unknown "%s" scope type specified', $type));
+            }
+
+            foreach ($rows as $rowNumber => $row) {
+                if (!isset($row[$type . '_id'])) {
+                    throw new RuntimeException(sprintf('Missing primary key for "%s" scope entity at #%d row', $type, $rowNumber + 1));
+                }
+            }
+        }
+
         return $this;
     }
 
@@ -711,76 +913,133 @@ class EcomDev_PHPUnit_Model_Fixture
      * i.e., website, store, store group
      *
      * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
      */
     protected function _discardScope()
     {
-        return $this;
-    }
-
-    /**
-     * Returns VFS wrapper instance
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture_Vfs
-     * @throws PHPUnit_Framework_SkippedTestError
-     */
-    public function getVfs()
-    {
-        if ($this->_vfs !== null) {
-            return $this->_vfs;
+        if ($this->getStorageData(self::STORAGE_KEY_SCOPE) === null) {
+            return $this;
         }
 
-        if (is_dir(Mage::getBaseDir('lib') . DS . 'vfsStream' . DS . 'main')) {
-            spl_autoload_register(array($this, 'vfsAutoload'), true, true);
-            $this->_vfs = Mage::getModel('ecomdev_phpunit/fixture_vfs');
-            return $this->_vfs;
+        Mage::app()->disableEvents();
+        $scope = array_reverse($this->getStorageData(self::STORAGE_KEY_SCOPE));
+        foreach ($scope as $models) {
+            foreach ($models as $model) {
+                $model->delete();
+            }
         }
 
-        throw new PHPUnit_Framework_SkippedTestError(
-            'The test was skipped, since vfsStream component is not installed. '
-            . 'Try install submodules required for this functionality'
+        $this->setStorageData(self::STORAGE_KEY_SCOPE, null);
+
+        Mage::app()->getCache()->clean(
+            Zend_Cache::CLEANING_MODE_MATCHING_ANY_TAG,
+            array(
+                Mage_Core_Model_Store::CACHE_TAG,
+                Mage_Core_Model_Store_Group::CACHE_TAG,
+                Mage_Core_Model_Website::CACHE_TAG
+            )
         );
-    }
 
-    /**
-     * Autoloader for vfs
-     *
-     * @param string $className
-     * @return bool
-     */
-    public function vfsAutoload($className)
-    {
-        if (strpos($className, 'vfs') !== 0) {
-            return false;
-        }
-
-        $fileName = 'vfsStream' . DS . 'src'
-            . DS . 'main' . DS . 'php' . DS
-            . strtr(trim($className, '\\'), '\\', DS) . '.php';
-
-        return include $fileName;
-    }
-
-    /**
-     * Applies VFS structure fixture
-     *
-     * @param array $data
-     * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
-     */
-    protected function _applyVfs($data)
-    {
+        Mage::app()->enableEvents();
+        Mage::app()->reinitStores();
         return $this;
     }
 
-    /**
-     * Discards VFS structure fixture
-     *
-     * @return EcomDev_PHPUnit_Model_Fixture
-     * @deprecated since 0.3.0
-     */
-    protected function _discardVfs()
-    {
-        return $this;
-    }
+	/**
+	 * Retrieves attribute loader for a particular entity type
+	 *
+	 * @param string $entityType
+	 * @return EcomDev_PHPUnit_Model_Mysql4_Fixture_Attribute_Abstract
+	 */
+	protected function _getAttributeLoader($entityType)
+	{
+		return $this->_getComplexLoader($entityType, 'ATTRIBUTE');
+	}
+
+	/**
+	 * Applies fixture EAV attribute values
+	 */
+	protected function _applyAttributes($attributes)
+	{
+		if (!is_array($attributes)) {
+			throw new InvalidArgumentException(
+				'Attributes part should be an associative list with rows as value and attribute code as key'
+			);
+		}
+
+		if (!$this->getStorageData(self::STORAGE_KEY_ATTRIBUTES, self::SCOPE_DEFAULT)) {
+			// since attributes are being used, we need to load all previously-existing
+			// attributes into default scope
+			$ignoreCleanup = array();
+
+			foreach(array_keys($attributes) as $entityType) {
+				$ignoreCleanup[$entityType] = $this->_getAttributeLoader(self::DEFAULT_SHARED_FIXTURE_NAME)
+					->setFixture($this)
+					->setOptions($this->_options)
+					->loadDefaultAttributes($entityType);
+			}
+
+			$this->setStorageData(self::STORAGE_KEY_ATTRIBUTES, $ignoreCleanup, self::SCOPE_DEFAULT);
+		}
+
+		$this->getResource()->beginTransaction();
+
+		foreach ($attributes as $entityType => $values) {
+			$this->_getAttributeLoader($entityType)
+				->setFixture($this)
+				->setOptions($this->_options)
+				->loadAttribute($entityType, $values);
+		}
+
+		$this->getResource()->commit();
+
+		$this->setStorageData(self::STORAGE_KEY_ATTRIBUTES, $attributes);
+
+		return $this;
+	}
+
+	/**
+	 * Clean applied attribute data
+	 *
+	 * @param array $attributes
+	 * @return EcomDev_PHPUnit_Model_Fixture
+	 */
+	protected function _discardAttributes($attributes)
+	{
+		// Ignore cleaning of attributes if they existed before fixtures were loaded
+		$ignoreCleanUp = $this->getStorageData(self::STORAGE_KEY_ATTRIBUTES, self::SCOPE_DEFAULT);
+		if($ignoreCleanUp === null) $ignoreCleanUp = array();
+
+		// Ignore cleaning of attributes if shared fixture loaded something for them
+		if ($this->isScopeLocal() && $this->getStorageData(self::STORAGE_KEY_ATTRIBUTES, self::SCOPE_SHARED)) {
+			$ignoreCleanUp = array_merge_recursive(
+				$ignoreCleanUp,
+				$this->getStorageData(self::STORAGE_KEY_ENTITIES, self::SCOPE_SHARED)
+			);
+		}
+
+		$this->getResource()->beginTransaction();
+
+		foreach ($attributes as $entityType => $values) {
+			$attributeCodes = array();
+			foreach ($values as $value) {
+				if (isset($value['attribute_code'])
+					&& !in_array($value['attribute_code'], $ignoreCleanUp[$entityType])) {
+					$attributeCodes[] = $value['attribute_code'];
+				}
+			}
+			if (!empty($attributeCodes)) {
+				$this->_getAttributeLoader(self::DEFAULT_SHARED_FIXTURE_NAME)
+					->cleanAttributes($entityType, $attributeCodes);
+			}
+		}
+
+		$this->getResource()->commit();
+
+		foreach (array_keys($attributes) as $entityType) {
+			$this->_getAttributeLoader(self::DEFAULT_SHARED_FIXTURE_NAME)->resetAttributesAutoIncrement($entityType);
+		}
+		$this->_getAttributeLoader(self::DEFAULT_SHARED_FIXTURE_NAME)->resetAttributesAutoIncrement();
+
+		return $this;
+	}
 }

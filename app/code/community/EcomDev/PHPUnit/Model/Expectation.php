@@ -1,5 +1,9 @@
 <?php
 
+// Loading Spyc yaml parser,
+// becuase Symfony component is not working propertly with nested
+require_once 'Spyc/spyc.php';
+
 class EcomDev_PHPUnit_Model_Expectation
     implements EcomDev_PHPUnit_Model_Expectation_Interface
 {
@@ -118,27 +122,22 @@ class EcomDev_PHPUnit_Model_Expectation
      *
      * @see EcomDev_PHPUnit_Model_Test_Loadable_Interface::loadByTestCase()
      */
-    public function loadByTestCase(PHPUnit_Framework_TestCase $testCase)
+    public function loadByTestCase(EcomDev_PHPUnit_Test_Case $testCase)
     {
-        $expectations = EcomDev_PHPUnit_Test_Case_Util::getAnnotationByNameFromClass(
-            get_class($testCase), 'loadExpectation', array('class', 'method'), $testCase->getName(false)
-        );
+        $expectations = $testCase->getAnnotationByName('loadExpectation');
 
         if (!$expectations) {
-            $expectations[] = $testCase->getName(false);
+            $expectations[] = null;
         }
 
         $expectationData = array();
 
         foreach ($expectations as $expectation) {
             if (empty($expectation)) {
-                $expectation = $testCase->getName(false);
+                $expectation = null;
             }
 
-            $expectationFile = EcomDev_PHPUnit_Test_Case_Util::getYamlLoader(get_class($testCase))
-                ->resolveFilePath(
-                    get_class($testCase), EcomDev_PHPUnit_Model_Yaml_Loader::TYPE_EXPECTATION, $expectation
-                );
+            $expectationFile = $testCase->getYamlFilePath('expectations', $expectation);
 
             if (!$expectationFile) {
                 $text = 'There was no expectation defined for current test case';
@@ -149,7 +148,7 @@ class EcomDev_PHPUnit_Model_Expectation
             }
 
             $expectationData = array_merge_recursive(
-                $expectationData, EcomDev_PHPUnit_Test_Case_Util::getYamlLoader()->load($expectationFile)
+                $expectationData, Spyc::YAMLLoad($expectationFile)
             );
         }
 

@@ -1,11 +1,21 @@
 # EcomDev_PHPUnit definition
+UnitTests.php                           UnitTests.php
 app/etc/modules/EcomDev_PHPUnit.xml     app/etc/modules/EcomDev_PHPUnit.xml
 app/code/community/EcomDev/PHPUnit      app/code/community/EcomDev/PHPUnit
 lib/EcomDev/PHPUnit                     lib/EcomDev/PHPUnit
 lib/EcomDev/Utils                       lib/EcomDev/Utils
 lib/Spyc                                lib/Spyc
-lib/vfsStream                           lib/vfsStream
-shell/ecomdev-phpunit-install.php       shell/ecomdev-phpunit-install.php
 
-# Run shell installer
-@shell  cd $PROJECT/shell && php -f ecomdev-phpunit-install.php -- --module $MODULE --project $PROJECT
+# Copy local.xml.phpunit if it doesn't already exist
+@shell \
+LOCALXML=app/etc/local.xml.phpunit; \
+if [ ! -f $PROJECT/$LOCALXML ]; then \
+  cp $MODULE/$LOCALXML $PROJECT/$LOCALXML; \
+fi
+
+# Copy phpunit.xml if it doesn't already exist
+@shell \
+PHPUNITXML=phpunit.xml.dist; \
+if [ ! -f $PROJECT/$LOCALXML ]; then \
+  cp $MODULE/$PHPUNITXML $PROJECT/$PHPUNITXML; \
+fi
