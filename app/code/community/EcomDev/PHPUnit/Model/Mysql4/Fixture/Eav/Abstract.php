@@ -11,7 +11,7 @@
  *
  * @category   EcomDev
  * @package    EcomDev_PHPUnit
- * @copyright  Copyright (c) 2012 EcomDev BV (http://www.ecomdev.org)
+ * @copyright  Copyright (c) 2013 EcomDev BV (http://www.ecomdev.org)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  */
@@ -31,43 +31,13 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
     protected $_requiredIndexers = array();
 
     /**
-     * Original list of indexers required to build
-     *
-     * @var array
-     */
-    protected $_originalIndexers = array();
-
-    /**
      * Retrieve required indexers for re-building
      *
-     * @return array
+     * @var array
      */
     public function getRequiredIndexers()
     {
         return $this->_requiredIndexers;
-    }
-
-    /**
-     * Run required indexers and reset to original required indexers
-     *
-     * @return EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
-     */
-    public function runRequiredIndexers()
-    {
-        if (empty($this->_options['doNotIndexAll'])) {
-            $indexer = Mage::getSingleton('index/indexer');
-            foreach ($this->getRequiredIndexers() as $indexerCode) {
-                if (empty($this->_options['doNotIndex'])
-                    || !in_array($indexerCode, $this->_options['doNotIndex'])) {
-                    $indexer->getProcessByCode($indexerCode)
-                        ->reindexAll();
-                }
-            }
-        }
-
-        // Restoring original required indexers for making tests isolated
-        $this->_requiredIndexers = $this->_originalIndexers;
-        return $this;
     }
 
     /**
@@ -108,7 +78,7 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
      */
     public function loadEntity($entityType, $values)
     {
-        $this->_originalIndexers = $this->_requiredIndexers;
+        $originalRequiredIndexers = $this->_requiredIndexers;
         if (!empty($this->_options['addRequiredIndex'])) {
             foreach ($this->_options['addRequiredIndex'] as $data) {
                 if (preg_match('/^([a-z0-9_\\-])+\\s+([a-z0-9_\\-])\s*$/i', $data, $match)
@@ -212,6 +182,19 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_Eav_Abstract
             $this->_customEntityAction($entity, $entityTypeModel);
         }
 
+        if (empty($this->_options['doNotIndexAll'])) {
+            $indexer = Mage::getSingleton('index/indexer');
+            foreach ($this->getRequiredIndexers() as $indexerCode) {
+                if (empty($this->_options['doNotIndex'])
+                    || !in_array($indexerCode, $this->_options['doNotIndex'])) {
+                    $indexer->getProcessByCode($indexerCode)
+                        ->reindexAll();
+                }
+            }
+        }
+
+        // Restoring original required indexers for making tests isolated
+        $this->_requiredIndexers = $originalRequiredIndexers;
         return $this;
     }
 

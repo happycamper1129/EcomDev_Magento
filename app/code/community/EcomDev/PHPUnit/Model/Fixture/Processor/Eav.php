@@ -11,7 +11,7 @@
  *
  * @category   EcomDev
  * @package    EcomDev_PHPUnit
- * @copyright  Copyright (c) 2012 EcomDev BV (http://www.ecomdev.org)
+ * @copyright  Copyright (c) 2013 EcomDev BV (http://www.ecomdev.org)
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  */
@@ -84,22 +84,16 @@ class EcomDev_PHPUnit_Model_Fixture_Processor_Eav
      */
     public function apply(array $data, $key, EcomDev_PHPUnit_Model_Fixture_Interface $fixture)
     {
-        $eavLoaders = array();
-
         $this->getResource()->beginTransaction();
 
         foreach ($data as $entityType => $values) {
-            $eavLoaders[] = $this->_getEavLoader($entityType)
+            $this->_getEavLoader($entityType)
                 ->setFixture($fixture)
                 ->setOptions($fixture->getOptions())
                 ->loadEntity($entityType, $values);
         }
 
         $this->getResource()->commit();
-
-        foreach ($eavLoaders as $eavLoader){
-            $eavLoader->runRequiredIndexers();
-        }
 
         $fixture->setStorageData(self::STORAGE_KEY, array_keys($data));
         return $this;
