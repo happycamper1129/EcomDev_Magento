@@ -236,20 +236,13 @@ class EcomDev_PHPUnit_Model_Config extends Mage_Core_Model_Config
     protected function _loadTestConfig()
     {
         $merge = clone $this->_prototype;
-
-        try {
-            if ($merge->loadFile($this->_getLocalXmlForTest())) {
-                $this->_checkDbCredentialForDuplicate($this, $merge);
-                $this->_checkBaseUrl($this, $merge);
-                $this->extend($merge);
-            } else {
-                throw new RuntimeException('Unable to load local.xml.phpunit. Please run ecomdev-phpunit.php with install action.');
-            }
-        } catch (RuntimeException $e) {
-            echo $e->getMessage() . "\n";
-            exit(1);
+        if ($merge->loadFile($this->_getLocalXmlForTest())) {
+            $this->_checkDbCredentialForDuplicate($this, $merge);
+            $this->_checkBaseUrl($this, $merge);
+            $this->extend($merge);
+        } else {
+            throw new Exception('Unable to load local.xml.phpunit');
         }
-
         return $this;
     }
 
@@ -282,10 +275,8 @@ class EcomDev_PHPUnit_Model_Config extends Mage_Core_Model_Config
         $originalDbName = (string) $original->getNode('global/resources/default_setup/connection/dbname');
         $testDbName = (string) $test->getNode('global/resources/default_setup/connection/dbname');
 
-        if ($originalDbName == $testDbName && (string)$test->getNode('phpunit/allow_same_db') !== '1') {
-            throw new RuntimeException('Test DB cannot be the same as the live one. '
-                                       . 'You can change this option by running ecomdev-phpunit.php with'
-                                       . ' magento-config action.');
+        if ($originalDbName == $testDbName) {
+            throw new RuntimeException('Test DB cannot be the same as the live one');
         }
         return $this;
     }
@@ -305,8 +296,12 @@ class EcomDev_PHPUnit_Model_Config extends Mage_Core_Model_Config
 
         if (empty($baseUrlSecure) || empty($baseUrlUnsecure)
             || $baseUrlSecure == self::CHANGE_ME || $baseUrlUnsecure == self::CHANGE_ME) {
-            throw new RuntimeException('The base url is not set for proper controller tests. '
-                                        . 'Please run ecomdev-phpunit.php with magento-config action.');
+            echo sprintf(
+                'Please change values in %s file for nodes %s and %s. '
+                . 'It will help in setting up proper controller test cases',
+                'app/etc/local.xml.phpunit', self::XML_PATH_SECURE_BASE_URL, self::XML_PATH_UNSECURE_BASE_URL
+            );
+            exit();
         }
     }
 
@@ -321,8 +316,7 @@ class EcomDev_PHPUnit_Model_Config extends Mage_Core_Model_Config
     {
         $filePath = $this->getOptions()->getEtcDir() . DS . 'local.xml.phpunit';
         if (!file_exists($filePath)) {
-            throw new RuntimeException('There is no local.xml.phpunit file. '
-                                       . 'Try running ecomdev-phpunit.php with install action.');
+            throw new RuntimeException('There is no local.xml.phpunit file');
         }
 
         return $filePath;
