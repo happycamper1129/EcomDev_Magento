@@ -109,10 +109,12 @@ Defined actions:
     --db-pwd      <string>   Changes test DB password
     --same-db     <bool>     Changes same db usage flag for unit tests
     --url-rewrite <bool>     Changes use of url rewrites for unit tests
-    --base-url    <string>   Changes base url for controller tests
+    --base_url    <string>   Changes base url for controller tests
 
   change-status              Changes status of EcomDev_PHPUnitTest module, that contains built in supplied tests
     --enable                 Used to determine the status of it. If not specified, it will be disabled
+
+  fix-autoloader             Patches Varien_Autoload class to suppress include warning, that breaks class_exists().
 
 USAGE;
     }
@@ -155,6 +157,9 @@ USAGE;
                 $this->_changeBuiltInTestStatus($this->getArg('enable'));
                 $this->_cleanCache();
                 echo "EcomDev_PHPUnitTest module status was changed\n";
+                break;
+            case 'fix-autoloader':
+                $this->_fixAutoloader();
                 break;
             default:
                 $this->_showHelp();
@@ -298,6 +303,27 @@ USAGE;
             $localXmlConfig->asNiceXml($localXml);
             printf("Saved updated configuration at %s\n", $localXml);
         }
+    }
+
+    /**
+     * Fixes Varien_Autoloader problem on phpunit test cases
+     *
+     *
+     */
+    protected function _fixAutoloader()
+    {
+        $autoloaderFile = $this->getArg('project') . DIRECTORY_SEPARATOR . 'lib/Varien/Autoload.php';
+
+        file_put_contents(
+            $autoloaderFile,
+            str_replace(
+                'return include $classFile;',
+                'return @include $classFile;',
+                file_get_contents($autoloaderFile)
+            )
+        );
+
+        echo "Varien_Autoloader was patched\n";
     }
 }
 
