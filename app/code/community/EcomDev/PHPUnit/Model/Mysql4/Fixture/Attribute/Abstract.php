@@ -15,7 +15,6 @@
  * @license    http://opensource.org/licenses/osl-3.0.php  Open Software License (OSL 3.0)
  * @author     Ivan Chepurnyi <ivan.chepurnyi@ecomdev.org>
  * @author     Steve Rice <srice@endertech.com>
- * @author     Jonathan Day <jonathan@aligent.com.au>
  */
 
 abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_Attribute_Abstract
@@ -154,19 +153,18 @@ abstract class EcomDev_PHPUnit_Model_Mysql4_Fixture_Attribute_Abstract
                 throw new Exception('Attribute array cannot be empty');
             }
             else {
-                $attributeCodes = array();
-                foreach($attributes[$entityType] as $attribute){
-                    $attributeCodes[] = $attribute['attribute_code'];
+                $aAttributeCodes = array();
+                foreach($attributes as $oAttribute){
+                    $aAttributeCodes[] = $oAttribute->getCode();
                 }
             }
 			//delete entry from eav/attribute and allow FK cascade to delete all related values
-            //TODO: check if the attribute != is_user_defined (ie system), then *only* delete the attribute option values, not attribute definition
 			$this->_getWriteAdapter()
 				->delete(
 					$this->getTable('eav/attribute'),
 					array(
 						'entity_type_id = ?'    => $eavSetup->getEntityTypeId($entityType),
-						'attribute_code IN (?)' => $attributeCodes,
+						'attribute_code IN (?)' => $aAttributeCodes,
 					)
 				);
 			$this->_getWriteAdapter()->commit();
